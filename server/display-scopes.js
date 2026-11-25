@@ -80,6 +80,53 @@ export const DISPLAY_WRITE_ROUTES = Object.freeze([
   Object.freeze({ method: 'POST', pattern: /^\/rewards\/redemptions$/ }),
 ]);
 
+/**
+ * FORK-ERWEITERUNG: Erweiterungsmodule, die ein gekoppeltes Display LESEN darf.
+ *
+ * Gesetzt per Umgebungsvariable `DISPLAY_EXTENSION_MODULES` (kommagetrennte
+ * Modul-Ids, z. B. `buecherei`). Ohne die Variable ist die Liste leer und alles
+ * verhaelt sich exakt wie im Original - die Entscheidung oben ("nicht
+ * konfigurierbar") bleibt der Standard, die Ausnahme muss der Betreiber
+ * ausdruecklich auf dem Server setzen, nicht ein Administrator in der App.
+ *
+ * Was ein freigegebenes Modul bekommt, ist genau `read`: Navigationseintrag,
+ * Seite und Moduldateien. Ob das Modul darueber hinaus etwas tun laesst,
+ * entscheidet sein eigenes Backend (Sidecar) - Yuvomis Display-Gates gelten
+ * fuer `/api/v1`, nicht fuer `/api/extensions/<id>/`.
+ *
+ * Die Id-Regel ist dieselbe wie fuer Modulordner (MODULE_ID_RE in
+ * services/module-capabilities.js), hier ohne Import wiederholt, weil diese
+ * Datei absichtlich keine Abhaengigkeiten hat. Was nicht passt, faellt weg.
+ */
+const EXTENSION_ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function parseDisplayExtensionModules(value) {
+  return Object.freeze([...new Set(
+    String(value || '')
+      .split(',')
+      .map((id) => id.trim().toLowerCase())
+      .filter((id) => EXTENSION_ID_RE.test(id)),
+  )]);
+}
+
+export const DISPLAY_EXTENSION_MODULES = parseDisplayExtensionModules(process.env.DISPLAY_EXTENSION_MODULES);
+
+/** Die Rechte-Schluessel (`ext:<id>`) dieser Module. */
+export const DISPLAY_EXTENSION_PERMISSION_KEYS = Object.freeze(
+  DISPLAY_EXTENSION_MODULES.map((id) => `ext:${id}`),
+);
+
+/**
+ * Darf ein Display diese Moduldatei lesen? Nur GET, nur unter
+ * `/modules/assets/<id>/` und nur fuer eine freigegebene Id. Den Rest (Traversal,
+ * Existenz, Ordnergrenze) prueft die Route selbst (resolveAssetPath).
+ */
+export function displayMayReadExtensionAsset(method, path, modules = DISPLAY_EXTENSION_MODULES) {
+  if (String(method || '').toUpperCase() !== 'GET') return false;
+  const match = /^\/modules\/assets\/([^/]+)\/./.exec(String(path || ''));
+  return Boolean(match) && modules.includes(match[1]);
+}
+
 /** Die Module daraus, ohne Zugriffsart - fuer die Rechteaufloesung. */
 export const DISPLAY_SCOPE_MODULES = Object.freeze(
   [...new Set(DISPLAY_SCOPES.map((scope) => scope.split(':')[0]))],
@@ -243,6 +290,7 @@ export function displayMayRead(method, path, { screensaver = false } = {}) {
   if (String(method || '').toUpperCase() !== 'GET') return false;
   const p = String(path || '');
   if (DISPLAY_READ_PATHS.includes(p)) return true;
+  if (displayMayReadExtensionAsset(method, p)) return true;
   return screensaver === true && DISPLAY_READ_ROUTES.some((pattern) => pattern.test(p));
 }
 

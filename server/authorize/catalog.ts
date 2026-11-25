@@ -43,7 +43,7 @@ import { MODULE_KEYS, getModuleKeys } from '../scopes.js';
 // NUR die reinen Listen, NICHT den Dienst: der zieht server/db.js mit, und damit
 // legte jede Suite, die bloss Rechte aufloest, eine echte yuvomi.db im Repo an
 // (test:db-isolation nannte vier davon).
-import { DISPLAY_SCOPE_MODULES } from '../display-scopes.js';
+import { DISPLAY_SCOPE_MODULES, DISPLAY_EXTENSION_PERMISSION_KEYS } from '../display-scopes.js';
 import { managesHousehold } from './manage.ts';
 
 /** The statement surface used here; better-sqlite3 and node:sqlite both provide it. */
@@ -465,7 +465,9 @@ export function resolvePermissions(
   // beiden Aktionen kommen mit #1209, und dann aendert sich DISPLAY_SCOPES,
   // nicht diese Stelle.
   if (isDisplay) {
-    const allowed = new Set(DISPLAY_SCOPE_MODULES);
+    // Fork: plus die per DISPLAY_EXTENSION_MODULES freigegebenen
+    // Erweiterungsmodule (server/display-scopes.js) - ebenfalls nur `read`.
+    const allowed = new Set([...DISPLAY_SCOPE_MODULES, ...DISPLAY_EXTENSION_PERMISSION_KEYS]);
     for (const key of Object.keys(modules)) {
       modules[key] = allowed.has(key) ? 'read' : 'none';
     }

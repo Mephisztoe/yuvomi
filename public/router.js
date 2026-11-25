@@ -4360,8 +4360,11 @@ function applyModuleReadonly(moduleName, pageWrapper) {
   // wie ein Fehler des Geraets, waehrend die Zeile darunter sich abhaken laesst
   // (im Browser gemessen). Ein widerspruechlicher Hinweis ist schlechter als
   // keiner; das Band bleibt ueberall sonst, auch am Display.
+  // Fork: dasselbe fuer Erweiterungsmodule, die dem Display freigegeben sind
+  // (DISPLAY_EXTENSION_MODULES) - was dort moeglich ist, entscheidet das
+  // Backend des Moduls, und das Modul zeigt es selbst an.
   if (readOnly && routerState.currentUser?.access_scope === 'display'
-    && DISPLAY_ACTING_MODULES.includes(moduleName)) {
+    && (DISPLAY_ACTING_MODULES.includes(moduleName) || String(moduleName).startsWith('third-party-'))) {
     document.documentElement.toggleAttribute('data-module-readonly', true);
     return;
   }
@@ -4392,6 +4395,20 @@ function navItems({ catalog = false } = {}) {
   // nur mit vier Eintraegen statt einem; die Liste spiegelt DISPLAY_SCOPES in
   // server/services/display-accounts.js.
   if (routerState.currentUser?.access_scope === 'display') {
+    // Fork: Erweiterungsmodule, die der Server diesem Display freigegeben hat
+    // (DISPLAY_EXTENSION_MODULES). Die Rechte kommen vom Server - ohne
+    // Freigabe steht dort `none`, und canAccessNavModule() laesst nichts durch.
+    const displayExtensions = _thirdPartyModules
+      .filter((module) => module.enabled && module.status === 'enabled' && module.menu?.show && module.route?.path
+        && canAccessNavModule(`third-party-${module.id}`))
+      .sort((a, b) => (a.menu.order ?? 1000) - (b.menu.order ?? 1000))
+      .map((module) => ({
+        path: module.route.path,
+        label: moduleDisplayLabel(module),
+        icon: module.menu.icon || module.icon || 'box',
+        module: `third-party-${module.id}`,
+        accent: module.accent,
+      }));
     return [
       { path: '/',         label: t('nav.dashboard'), icon: MODULE_ICON.dashboard, module: 'dashboard' },
       { path: '/calendar', label: t('nav.calendar'),  icon: MODULE_ICON.calendar,  module: 'calendar' },
@@ -4404,7 +4421,8 @@ function navItems({ catalog = false } = {}) {
       // beim Antippen zurueck auf die Uebersicht. Der gewoehnliche Zweig unten
       // filtert dieselbe Menge; das Dashboard bleibt immer, es ist die
       // Startseite und laesst sich nicht abschalten.
-    ].filter((item) => item.module === 'dashboard' || !routerState._disabledModules.has(item.module));
+    ].filter((item) => item.module === 'dashboard' || !routerState._disabledModules.has(item.module))
+      .concat(displayExtensions);
   }
   /* DAS ZEICHEN STEHT NICHT HIER, SONDERN IN MODULE_ICON (nav-icons.js).
    *
